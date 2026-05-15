@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:nomad/theme/app_theme.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
+import 'history_page.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -12,7 +14,12 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = [const HomePage(), const ProfilePage()];
+  // Les 3 pages qui correspondent parfaitement aux 3 icônes du bas
+  final List<Widget> _pages = [
+    const HomePage(),
+    const HistoryPage(),
+    const ProfilePage(),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -25,12 +32,23 @@ class _MainNavigationState extends State<MainNavigation> {
             _currentIndex = index;
           });
         },
+        backgroundColor: Colors.black,
+        selectedItemColor: AppTheme.primaryAccent, // Ta couleur Vert/Jaune fluo
+        unselectedItemColor: Colors.white54,
+        type: BottomNavigationBarType.fixed, // Évite les décalages visuels
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.directions_run),
+            icon: Icon(Icons.directions_run_rounded),
             label: 'Course',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history_rounded),
+            label: 'Historique',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded),
+            label: 'Profil',
+          ),
         ],
       ),
     );

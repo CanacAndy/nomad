@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
+import 'main_navigation.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -33,7 +34,7 @@ class _RegisterPageState extends State<RegisterPage> {
     print("🚀 Tentative d'inscription...");
 
     try {
-      // 2. Création Auth - On n'assigne pas de variable ici pour éviter le bug de cast Pigeon
+      // 2. Création Auth
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -53,13 +54,21 @@ class _RegisterPageState extends State<RegisterPage> {
           'age': int.tryParse(_ageController.text.trim()) ?? 0,
           'weight': double.tryParse(_weightController.text.trim()) ?? 0.0,
           'height': double.tryParse(_heightController.text.trim()) ?? 0.0,
+          'weeklyGoal':
+              20, // Ajout d'une valeur par défaut cohérente avec EditProfilePage
           'createdAt': FieldValue.serverTimestamp(),
         });
 
         print("🔥 Firestore mis à jour avec succès !");
 
         if (mounted) {
-          Navigator.of(context).pop(); // Retour à l'écran précédent
+          // 💡 DIRECTION L'ACCUEIL : L'inscription a réussi, l'utilisateur est connecté,
+          // on l'envoie sur l'application et on détruit la pile d'authentification.
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+            (route) => false,
+          );
         }
       } else {
         throw Exception(
@@ -70,11 +79,11 @@ class _RegisterPageState extends State<RegisterPage> {
       print("❌ Erreur Auth: ${e.code}");
       _showError(_translateError(e.code));
     } catch (e) {
-      // Si l'erreur Pigeon survient quand même, on vérifie si l'Auth a quand même réussi
+      // Fallback si l'erreur Pigeon survient
       final userFallback = FirebaseAuth.instance.currentUser;
       if (userFallback != null) {
         print(
-          "⚠️ Erreur de cast détectée mais utilisateur connecté. Forçage Firestore...",
+          "⚠️ Erreur détectée mais utilisateur connecté. Forçage Firestore...",
         );
         await FirebaseFirestore.instance
             .collection('users')
@@ -86,9 +95,17 @@ class _RegisterPageState extends State<RegisterPage> {
               'age': int.tryParse(_ageController.text.trim()) ?? 0,
               'weight': double.tryParse(_weightController.text.trim()) ?? 0.0,
               'height': double.tryParse(_heightController.text.trim()) ?? 0.0,
+              'weeklyGoal': 20,
               'createdAt': FieldValue.serverTimestamp(),
             });
-        if (mounted) Navigator.of(context).pop();
+
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+            (route) => false,
+          );
+        }
       } else {
         print("❌ Erreur critique : $e");
         _showError("Erreur : $e");
@@ -131,7 +148,12 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+      backgroundColor: AppTheme.darkBackground,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -198,19 +220,27 @@ class _RegisterPageState extends State<RegisterPage> {
                 onPressed: _isLoading ? null : _register,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: AppTheme.primaryAccent,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 child: _isLoading
                     ? const SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
-                          color: Colors.white,
+                          color: Colors.black,
                           strokeWidth: 2,
                         ),
                       )
                     : const Text(
                         'S\'INSCRIRE',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
               ),
             ],
@@ -234,8 +264,8 @@ class _RegisterPageState extends State<RegisterPage> {
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.grey),
-        prefixIcon: Icon(icon, color: Colors.blueAccent),
+        hintStyle: const TextStyle(color: AppTheme.textSecondary),
+        prefixIcon: Icon(icon, color: AppTheme.primaryAccent),
         filled: true,
         fillColor: Colors.white.withOpacity(0.05),
         border: OutlineInputBorder(

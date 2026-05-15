@@ -31,7 +31,7 @@ class _ProfilePageState extends State<ProfilePage> {
           .doc(user!.uid)
           .get();
 
-      if (doc.exists && doc.data() != null) {
+      if (doc.exists && doc.data() != null && mounted) {
         setState(() {
           userName = doc.data()!['name'] ?? "Utilisateur";
         });
@@ -93,7 +93,10 @@ class _ProfilePageState extends State<ProfilePage> {
                             MaterialPageRoute(
                               builder: (context) => const EditProfilePage(),
                             ),
-                          );
+                          ).then((_) {
+                            // 💡 REFRESH AUTOMATIQUE (Bouton Crayon)
+                            _fetchUserData();
+                          });
                         },
                       ),
                     ],
@@ -137,7 +140,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 32),
 
-            // Statistics Grid (Ici, tu pourras brancher tes vrais calculs plus tard)
+            // Statistics Grid
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -194,7 +197,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         MaterialPageRoute(
                           builder: (context) => const EditProfilePage(),
                         ),
-                      );
+                      ).then((_) {
+                        // 💡 REFRESH AUTOMATIQUE (Ligne Paramètres)
+                        _fetchUserData();
+                      });
                     },
                   ),
 
@@ -203,7 +209,18 @@ class _ProfilePageState extends State<ProfilePage> {
                   GestureDetector(
                     onTap: () async {
                       await FirebaseAuth.instance.signOut();
-                      // Grâce à ton AuthWrapper dans main.dart, l'app reviendra au Login toute seule.
+
+                      // 💡 REDIRECTION SÉCURISÉE : Une fois déconnecté, on renvoie l'utilisateur
+                      // à la page de Login et on efface l'historique pour éviter les retours arrière.
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const LoginPage(),
+                          ),
+                          (route) => false,
+                        );
+                      }
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -240,7 +257,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Tes widgets de construction (StatCard et MenuOption) restent les mêmes...
   Widget _buildStatCard(
     IconData icon,
     String label,

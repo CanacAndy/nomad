@@ -33,13 +33,13 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text.trim(),
       );
 
-      // Note : Si tu as un AuthWrapper dans ton main.dart,
-      // il détectera la connexion et changera de page tout seul.
-      // Sinon, on pousse vers MainNavigation :
       if (mounted) {
-        Navigator.pushReplacement(
+        // 💡 NETTOYAGE DE L'HISTORIQUE : On ouvre la navigation principale
+        // et on détruit la page de Login pour qu'on ne puisse plus y revenir par erreur.
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const MainNavigation()),
+          (route) => false,
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -68,6 +68,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.darkBackground,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -95,6 +96,7 @@ class _LoginPageState extends State<LoginPage> {
               TextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   hintText: 'Email',
                   prefixIcon: Icon(
@@ -109,6 +111,7 @@ class _LoginPageState extends State<LoginPage> {
               TextFormField(
                 controller: _passwordController,
                 obscureText: true,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   hintText: 'Mot de passe',
                   prefixIcon: Icon(
@@ -122,12 +125,20 @@ class _LoginPageState extends State<LoginPage> {
               // Bouton Se connecter
               ElevatedButton(
                 onPressed: _isLoading ? null : _login,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: AppTheme.primaryAccent,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
                 child: _isLoading
                     ? const SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
-                          color: Colors.white,
+                          color: Colors.black,
                           strokeWidth: 2,
                         ),
                       )
@@ -149,7 +160,12 @@ class _LoginPageState extends State<LoginPage> {
                     MaterialPageRoute(
                       builder: (context) => const RegisterPage(),
                     ),
-                  );
+                  ).then((_) {
+                    // 💡 REFRESH AU RETOUR : Si l'utilisateur a tapé des infos,
+                    // est parti voir la page d'inscription, puis est revenu,
+                    // on reconstruit proprement l'état visuel de la page.
+                    setState(() {});
+                  });
                 },
                 child: const Text(
                   'Pas encore de compte ? S\'inscrire',

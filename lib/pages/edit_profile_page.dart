@@ -40,14 +40,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
           final data = doc.data() as Map<String, dynamic>;
           _nameController.text = data['name'] ?? '';
           _emailController.text = data['email'] ?? '';
-          // Si tu as un champ 'weeklyGoal' dans Firestore, sinon valeur par défaut '20'
           _goalController.text = (data['weeklyGoal'] ?? '20').toString();
         }
       }
     } catch (e) {
       print("❌ Erreur lors du chargement du profil : $e");
     } finally {
-      setState(() => _isInitLoading = false);
+      if (mounted) {
+        setState(() => _isInitLoading = false);
+      }
     }
   }
 
@@ -66,7 +67,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     try {
       if (_uid != null) {
-        // Enregistrement des nouvelles données
         await FirebaseFirestore.instance.collection('users').doc(_uid).update({
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
@@ -74,7 +74,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         });
 
         _showSnackBar("Profil mis à jour avec succès !");
-        if (mounted) Navigator.pop(context); // Retour à la page précédente
+
+        // 💡 On ferme la page. Le .then() configuré sur ProfilePage ou HomePage va se déclencher !
+        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
       print("❌ Erreur lors de la sauvegarde : $e");
@@ -109,6 +111,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       appBar: AppBar(
+        // 💡 FORCE LE RETOUR PROPRE : Même si on clique sur la flèche retour du haut,
+        // cela garantit que la page précédente intercepte la fermeture pour rafraîchir.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'Modifier le profil',
           style: TextStyle(fontWeight: FontWeight.bold),
