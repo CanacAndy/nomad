@@ -1,10 +1,69 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'register_page.dart';
 import 'main_navigation.dart';
 import '../theme/app_theme.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  // 1. Contrôleurs pour récupérer l'email et le mot de passe
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  bool _isLoading = false;
+
+  // 2. Fonction de connexion Firebase
+  Future<void> _login() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      _showError("Veuillez remplir tous les champs");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      // Note : Si tu as un AuthWrapper dans ton main.dart,
+      // il détectera la connexion et changera de page tout seul.
+      // Sinon, on pousse vers MainNavigation :
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigation()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = "Erreur de connexion";
+      if (e.code == 'user-not-found') message = "Aucun utilisateur trouvé";
+      if (e.code == 'wrong-password') message = "Mot de passe incorrect";
+      _showError(message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +90,11 @@ class LoginPage extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
+
+              // Champ Email
               TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   hintText: 'Email',
                   prefixIcon: Icon(
@@ -41,7 +104,10 @@ class LoginPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
+
+              // Champ Mot de passe
               TextFormField(
+                controller: _passwordController,
                 obscureText: true,
                 decoration: const InputDecoration(
                   hintText: 'Mot de passe',
@@ -52,21 +118,30 @@ class LoginPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 32),
+
+              // Bouton Se connecter
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MainNavigation(),
-                    ),
-                  );
-                },
-                child: const Text(
-                  'Se connecter',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+                onPressed: _isLoading ? null : _login,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Se connecter',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
               ),
               const SizedBox(height: 16),
+
+              // Lien vers Inscription
               TextButton(
                 onPressed: () {
                   Navigator.push(

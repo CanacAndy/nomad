@@ -1,10 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import 'login_page.dart';
 import 'edit_profile_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  // Récupération de l'utilisateur actuel
+  final User? user = FirebaseAuth.instance.currentUser;
+  String userName = "Chargement...";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserData();
+  }
+
+  // Fonction pour récupérer le nom dans Firestore
+  Future<void> _fetchUserData() async {
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        setState(() {
+          userName = doc.data()!['name'] ?? "Utilisateur";
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +46,7 @@ class ProfilePage extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Custom Header
+            // Custom Header (Gradient + Avatar)
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -54,7 +87,14 @@ class ProfilePage extends StatelessWidget {
                           Icons.edit_rounded,
                           color: Colors.black87,
                         ),
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const EditProfilePage(),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -64,70 +104,40 @@ class ProfilePage extends StatelessWidget {
                   left: 0,
                   right: 0,
                   child: Center(
-                    child: Stack(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: AppTheme.darkBackground,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const CircleAvatar(
-                            radius: 50,
-                            backgroundImage: NetworkImage(
-                              'https://i.pravatar.cc/150?img=11',
-                            ),
-                            backgroundColor: AppTheme.cardColor,
-                          ),
+                    child: CircleAvatar(
+                      radius: 52,
+                      backgroundColor: AppTheme.darkBackground,
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundImage: NetworkImage(
+                          user?.photoURL ??
+                              'https://i.pravatar.cc/150?u=${user?.uid}',
                         ),
-                        Positioned(
-                          bottom: 4,
-                          right: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.secondaryAccent,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppTheme.darkBackground,
-                                width: 2,
-                              ),
-                            ),
-                            child: const Text(
-                              'PRO',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                        backgroundColor: AppTheme.cardColor,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 80), // Spacing for avatar
-            // User Info
+            const SizedBox(height: 60),
+
+            // --- VRAIES INFOS UTILISATEUR ---
             Text(
-              'Alexandre Dubois',
+              userName, // Vrai nom venant de Firestore
               style: Theme.of(
                 context,
               ).textTheme.displayLarge?.copyWith(fontSize: 24),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'alexandre.d@example.com',
-              style: TextStyle(color: AppTheme.textSecondary),
+            Text(
+              user?.email ??
+                  'Email non disponible', // Vrai email de Firebase Auth
+              style: const TextStyle(color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 32),
 
-            // Statistics Grid
+            // Statistics Grid (Ici, tu pourras brancher tes vrais calculs plus tard)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -135,7 +145,11 @@ class ProfilePage extends StatelessWidget {
                 children: [
                   const Text(
                     'Statistiques Globales',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -144,7 +158,7 @@ class ProfilePage extends StatelessWidget {
                         child: _buildStatCard(
                           Icons.directions_run_rounded,
                           'Courses',
-                          '42',
+                          '0',
                           Colors.blueAccent,
                         ),
                       ),
@@ -153,86 +167,22 @@ class ProfilePage extends StatelessWidget {
                         child: _buildStatCard(
                           Icons.speed_rounded,
                           'Distance',
-                          '312 km',
+                          '0 km',
                           AppTheme.primaryAccent,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.timer_rounded,
-                          'Temps',
-                          '28h',
-                          Colors.purpleAccent,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.local_fire_department_rounded,
-                          'Calories',
-                          '18.4k',
-                          Colors.orangeAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Weekly Goal
-                  const Text(
-                    'Objectif de la semaine',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppTheme.cardColor,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Column(
-                      children: [
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Courir 20 km',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              '14 / 20 km',
-                              style: TextStyle(
-                                color: AppTheme.primaryAccent,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: const LinearProgressIndicator(
-                            value: 14 / 20,
-                            minHeight: 10,
-                            backgroundColor: Colors.white10,
-                            color: AppTheme.primaryAccent,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 32),
 
                   // Menu Options
                   const Text(
                     'Paramètres',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _buildMenuOption(
@@ -247,25 +197,13 @@ class ProfilePage extends StatelessWidget {
                       );
                     },
                   ),
-                  _buildMenuOption(
-                    Icons.notifications_none_rounded,
-                    'Notifications',
-                  ),
-                  _buildMenuOption(
-                    Icons.privacy_tip_outlined,
-                    'Confidentialité',
-                  ),
+
+                  // --- BOUTON DÉCONNEXION RÉEL ---
                   const SizedBox(height: 16),
                   GestureDetector(
-                    onTap: () {
-                      Navigator.of(
-                        context,
-                        rootNavigator: true,
-                      ).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (context) => const LoginPage(),
-                        ),
-                      );
+                    onTap: () async {
+                      await FirebaseAuth.instance.signOut();
+                      // Grâce à ton AuthWrapper dans main.dart, l'app reviendra au Login toute seule.
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -302,6 +240,7 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
+  // Tes widgets de construction (StatCard et MenuOption) restent les mêmes...
   Widget _buildStatCard(
     IconData icon,
     String label,
@@ -318,27 +257,19 @@ class ProfilePage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
+          Icon(icon, color: color, size: 24),
           const SizedBox(height: 16),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
           ),
         ],
       ),
@@ -346,29 +277,11 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildMenuOption(IconData icon, String title, {VoidCallback? onTap}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: const BoxDecoration(
-            color: Colors.white10,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: Colors.white),
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        trailing: const Icon(
-          Icons.chevron_right_rounded,
-          color: AppTheme.textSecondary,
-        ),
-        onTap: onTap ?? () {},
-      ),
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: Colors.white),
+      title: Text(title, style: const TextStyle(color: Colors.white)),
+      trailing: const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
     );
   }
 }
