@@ -6,7 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
-import '../models/workout.dart'; // Assure-toi que le chemin vers ton modèle est correct
+import '../models/workout.dart';
 
 class RunTrackingPage extends StatefulWidget {
   final int targetTimeMinutes;
@@ -21,6 +21,9 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
   int _secondsElapsed = 0;
   bool _isRunning = true;
   Timer? _timer;
+
+  // Poids de l'utilisateur (récupéré depuis Firestore)
+  int _userWeight = 70; // Valeur par défaut si non trouvé
 
   // Contrôleur pour animer et centrer la carte sur la position de l'utilisateur
   final MapController _mapController = MapController();
@@ -37,7 +40,32 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
   @override
   void initState() {
     super.initState();
+    _loadUserWeight();
     _startTimer();
+  }
+
+  // Charger le poids de l'utilisateur depuis Firestore
+  Future<void> _loadUserWeight() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        DocumentSnapshot doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data['weight'] != null) {
+            setState(() {
+              _userWeight = (data['weight'] as num).toInt();
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print("❌ Erreur lors de la récupération du poids pour les calories : $e");
+    }
   }
 
   void _startTimer() {
@@ -66,10 +94,14 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
   }
 
   void _stopRun() {
-    _timer?.cancel();
+    // On met en pause le timer immédiatement dès qu'on interagit avec l'arrêt
+    setState(() {
+      _isRunning = false;
+    });
 
     // Si l'utilisateur clique sur stop alors qu'il n'a pas commencé, on quitte directement
     if (_secondsElapsed == 0) {
+      _timer?.cancel();
       Navigator.pop(context);
       return;
     }
@@ -95,6 +127,7 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
           actions: [
             TextButton(
               onPressed: () {
+                _timer?.cancel();
                 Navigator.pop(dialogContext); // Ferme la pop-up
                 Navigator.pop(
                   context,
@@ -114,7 +147,8 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
                 ),
               ),
               onPressed: () async {
-                Navigator.pop(dialogContext); // Ferme la pop-up
+                Navigator.pop(dialogContext); // Ferme la pop-up d'abord
+                _timer?.cancel(); // Coupe définitivement le timer
                 await _saveWorkoutToFirestore(); // Lance la sauvegarde Firestore
               },
               child: const Text(
@@ -142,13 +176,14 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
     );
 
     try {
-      // Instanciation de notre modèle Workout avec les données de la session actuelle
+      // Instanciation de notre modèle Workout avec les données scientifiques réelles
       final workout = Workout(
         userId: user.uid,
         date: DateTime.now(),
         durationSeconds: _secondsElapsed,
         distanceKm: _distanceKm,
-        calories: _calories,
+        calories:
+            _calories, // Calories calculées scientifiquement selon son poids
         targetTimeMinutes: widget.targetTimeMinutes,
         routePoints: _routePoints,
       );
@@ -157,14 +192,16 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
       await FirebaseFirestore.instance
           .collection('workouts')
           .add(workout.toMap());
+
       print("✅ Course enregistrée avec succès dans Firestore !");
     } catch (e) {
       print("❌ Erreur lors de la sauvegarde de la course : $e");
     }
 
+    // Sortie propre et sécurisée des écrans (Vérification mounted obligatoire !)
     if (mounted) {
       Navigator.pop(context); // Ferme le loader (CircularProgressIndicator)
-      Navigator.pop(context); // Retourne à l'écran d'accueil ou historique
+      Navigator.pop(context); // Retourne à l'écran d'accueil
     }
   }
 
@@ -185,8 +222,11 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
     return (_secondsElapsed * 2.7) / 1000;
   }
 
+  // 🧮 CALCUL SCIENTIFIQUE DES CALORIES EN FONCTION DU POIDS
   int get _calories {
-    return (_secondsElapsed / 60 * 10).toInt();
+    if (_distanceKm == 0) return 0;
+    // Formule : Distance (km) * Poids (kg) * 1.036
+    return (_distanceKm * _userWeight * 1.036).round();
   }
 
   @override
@@ -231,7 +271,7 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
                 ),
                 PolylineLayer(
                   polylines: [
-                    Polyline<Object>(
+                    Polyline(
                       points: _routePoints,
                       strokeWidth: 8.0,
                       color: Colors.blueAccent,
@@ -362,10 +402,11 @@ class _RunTrackingPageState extends State<RunTrackingPage> {
                               width: 160,
                               height: 160,
                               child: CircularProgressIndicator(
-                                value:
-                                    (_secondsElapsed /
-                                            (widget.targetTimeMinutes * 60))
-                                        .clamp(0.0, 1.0),
+                                value: widget.targetTimeMinutes > 0
+                                    ? (_secondsElapsed /
+                                              (widget.targetTimeMinutes * 60))
+                                          .clamp(0.0, 1.0)
+                                    : 0.0,
                                 strokeWidth: 8,
                                 backgroundColor: Colors.white10,
                                 color: AppTheme.primaryAccent,

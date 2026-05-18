@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../providers/user_provider.dart';
 import 'login_page.dart';
 import 'edit_profile_page.dart';
 
@@ -13,34 +16,59 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // Récupération de l'utilisateur actuel
   final User? user = FirebaseAuth.instance.currentUser;
-  String userName = "Chargement...";
+
+  // Variables pour les statistiques globales calculées en temps réel
+  int _totalWorkouts = 0;
+  double _totalDistance = 0.0;
+  StreamSubscription<QuerySnapshot>? _statsSubscription;
 
   @override
   void initState() {
     super.initState();
-    _fetchUserData();
+    _listenToGlobalStats();
   }
 
-  // Fonction pour récupérer le nom dans Firestore
-  Future<void> _fetchUserData() async {
-    if (user != null) {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .get();
+  // Écoute TOUTES les courses de l'utilisateur pour sommer les statistiques globales
+  void _listenToGlobalStats() {
+    if (user == null) return;
 
-      if (doc.exists && doc.data() != null && mounted) {
-        setState(() {
-          userName = doc.data()!['name'] ?? "Utilisateur";
+    _statsSubscription = FirebaseFirestore.instance
+        .collection('workouts')
+        .where('userId', isEqualTo: user!.uid)
+        .snapshots()
+        .listen((snapshot) {
+          int count = snapshot.docs.length;
+          double distanceCumulee = 0.0;
+
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            final distance = data['distanceKm'];
+            if (distance != null) {
+              distanceCumulee += (distance as num).toDouble();
+            }
+          }
+
+          if (mounted) {
+            setState(() {
+              _totalWorkouts = count;
+              _totalDistance = distanceCumulee;
+            });
+          }
         });
-      }
-    }
+  }
+
+  @override
+  void dispose() {
+    _statsSubscription?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // 💡 On récupère instantanément les données du Provider sans faire de requêtes manuelles !
+    final userProvider = Provider.of<UserProvider>(context);
+
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       body: SingleChildScrollView(
@@ -93,10 +121,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             MaterialPageRoute(
                               builder: (context) => const EditProfilePage(),
                             ),
-                          ).then((_) {
-                            // 💡 REFRESH AUTOMATIQUE (Bouton Crayon)
-                            _fetchUserData();
-                          });
+                          );
                         },
                       ),
                     ],
@@ -125,22 +150,23 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 60),
 
-            // --- VRAIES INFOS UTILISATEUR ---
+            // --- VRAIES INFOS UTILISATEUR VIA PROVIDER ---
             Text(
-              userName, // Vrai nom venant de Firestore
+              userProvider.name, // Nom réactif et mis à jour instantanément
               style: Theme.of(
                 context,
               ).textTheme.displayLarge?.copyWith(fontSize: 24),
             ),
             const SizedBox(height: 4),
             Text(
-              user?.email ??
-                  'Email non disponible', // Vrai email de Firebase Auth
+              userProvider.email.isNotEmpty
+                  ? userProvider.email
+                  : (user?.email ?? 'Email non disponible'),
               style: const TextStyle(color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 32),
 
-            // Statistics Grid
+            // Statistics Grid (Branché sur de vraies valeurs !)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -161,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: _buildStatCard(
                           Icons.directions_run_rounded,
                           'Courses',
-                          '0',
+                          '$_totalWorkouts', // Vrai nombre cumulé
                           Colors.blueAccent,
                         ),
                       ),
@@ -169,8 +195,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       Expanded(
                         child: _buildStatCard(
                           Icons.speed_rounded,
-                          'Distance',
-                          '0 km',
+                          'Distance total',
+                          '${_totalDistance.toStringAsFixed(1)} km', // Vrais kilomètres cumulés
                           AppTheme.primaryAccent,
                         ),
                       ),
@@ -197,21 +223,16 @@ class _ProfilePageState extends State<ProfilePage> {
                         MaterialPageRoute(
                           builder: (context) => const EditProfilePage(),
                         ),
-                      ).then((_) {
-                        // 💡 REFRESH AUTOMATIQUE (Ligne Paramètres)
-                        _fetchUserData();
-                      });
+                      );
                     },
                   ),
 
-                  // --- BOUTON DÉCONNEXION RÉEL ---
+                  // --- BOUTON DÉCONNEXION ---
                   const SizedBox(height: 16),
                   GestureDetector(
                     onTap: () async {
                       await FirebaseAuth.instance.signOut();
 
-                      // 💡 REDIRECTION SÉCURISÉE : Une fois déconnecté, on renvoie l'utilisateur
-                      // à la page de Login et on efface l'historique pour éviter les retours arrière.
                       if (context.mounted) {
                         Navigator.pushAndRemoveUntil(
                           context,
