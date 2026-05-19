@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../providers/user_provider.dart';
+import '../widgets/bmi_card.dart';
 import 'login_page.dart';
 import 'edit_profile_page.dart';
 
@@ -66,7 +67,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    // 💡 On récupère instantanément les données du Provider sans faire de requêtes manuelles !
     final userProvider = Provider.of<UserProvider>(context);
 
     return Scaffold(
@@ -83,8 +83,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppTheme.primaryAccent.withOpacity(0.9),
-                        AppTheme.secondaryAccent.withOpacity(0.6),
+                        AppTheme.primaryAccent.withValues(alpha: 0.9),
+                        AppTheme.secondaryAccent.withValues(alpha: 0.6),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -150,9 +150,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 60),
 
-            // --- VRAIES INFOS UTILISATEUR VIA PROVIDER ---
+            // --- INFOS UTILISATEUR VIA PROVIDER ---
             Text(
-              userProvider.name, // Nom réactif et mis à jour instantanément
+              userProvider.name,
               style: Theme.of(
                 context,
               ).textTheme.displayLarge?.copyWith(fontSize: 24),
@@ -166,12 +166,13 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 32),
 
-            // Statistics Grid (Branché sur de vraies valeurs !)
+            // Contenu du profil
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // --- SECTION 1 : STATISTIQUES GLOBALES ---
                   const Text(
                     'Statistiques Globales',
                     style: TextStyle(
@@ -187,7 +188,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: _buildStatCard(
                           Icons.directions_run_rounded,
                           'Courses',
-                          '$_totalWorkouts', // Vrai nombre cumulé
+                          '$_totalWorkouts',
                           Colors.blueAccent,
                         ),
                       ),
@@ -195,16 +196,62 @@ class _ProfilePageState extends State<ProfilePage> {
                       Expanded(
                         child: _buildStatCard(
                           Icons.speed_rounded,
-                          'Distance total',
-                          '${_totalDistance.toStringAsFixed(1)} km', // Vrais kilomètres cumulés
+                          'Distance totale',
+                          '${_totalDistance.toStringAsFixed(1)} km',
                           AppTheme.primaryAccent,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
 
-                  // Menu Options
+                  // --- 🎯 REQUÊTE DIRECTE FIRESTORE POUR L'IMC ---
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user?.uid)
+                        .snapshots(),
+                    builder: (context, userSnapshot) {
+                      if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final userData =
+                          userSnapshot.data!.data() as Map<String, dynamic>?;
+                      if (userData == null) return const SizedBox.shrink();
+
+                      // On essaie de récupérer le poids et la taille (on check les versions française et anglaise pour être sûr)
+                      final rawWeight =
+                          userData['weight'] ?? userData['poids'] ?? 0.0;
+                      final rawHeight =
+                          userData['height'] ?? userData['taille'] ?? 0.0;
+
+                      final double weight = (rawWeight as num).toDouble();
+                      final double height = (rawHeight as num).toDouble();
+
+                      if (weight > 0 && height > 0) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 32),
+                            const Text(
+                              'Analyse de Santé',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            BmiCard(weightKg: weight, heightCm: height),
+                          ],
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+
+                  // --- SECTION 3 : PARAMÈTRES ---
+                  const SizedBox(height: 32),
                   const Text(
                     'Paramètres',
                     style: TextStyle(
@@ -249,7 +296,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         horizontal: 20,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.redAccent.withOpacity(0.1),
+                        color: Colors.redAccent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Row(
