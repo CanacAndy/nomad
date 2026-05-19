@@ -8,6 +8,40 @@ import '../models/workout.dart';
 class HistoryPage extends StatelessWidget {
   const HistoryPage({super.key});
 
+  // 🧮 Calcule l'allure moyenne au kilomètre (format standard : MM'SS")
+  String _calculatePace(double distanceKm, int totalSeconds) {
+    if (distanceKm <= 0 || totalSeconds <= 0) return "-'--\"";
+    final totalMinutes = totalSeconds / 60;
+    final paceDecimal = totalMinutes / distanceKm;
+    final paceMinutes = paceDecimal.floor();
+    final paceSeconds = ((paceDecimal - paceMinutes) * 60).round();
+    return "$paceMinutes'${paceSeconds.toString().padLeft(2, '0')}\"";
+  }
+
+  // 🕒 Formate une durée globale proprement (gère les heures)
+  String _formatTotalDuration(int totalSeconds) {
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return "${hours}h ${minutes}m";
+    }
+    return "${minutes}m ${seconds}s";
+  }
+
+  // ⏱ Formate la durée d'une seule course (MM:SS ou HH:MM:SS)
+  String _formatSingleDuration(int totalSeconds) {
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -33,9 +67,9 @@ class HistoryPage extends StatelessWidget {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // 💡 CORRECTION : Plus de orderBy ici pour éviter le blocage d'index Firestore
         stream: FirebaseFirestore.instance
             .collection('workouts')
             .where('userId', isEqualTo: user.uid)
@@ -48,48 +82,71 @@ class HistoryPage extends StatelessWidget {
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text(
-                "Aucune course enregistrée.\nBouge de là et va courir ! 🏃‍♂️",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.directions_run_rounded,
+                    size: 64,
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Aucune course enregistrée.\nBouge de là et va courir ! 🏃‍♂️",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
               ),
             );
           }
 
-          // Convertit les documents Firestore en liste de Workout
-          List<Workout> workouts = snapshot.data!.docs
+          List<DocumentSnapshot> workoutDocs = snapshot.data!.docs;
+          List<Workout> workouts = workoutDocs
               .map((doc) => Workout.fromFirestore(doc))
               .toList();
 
-          // 💡 TRUC EN PLUS : On trie les courses de la plus récente à la plus ancienne directement en Dart
-          workouts.sort((a, b) => b.date.compareTo(a.date));
+          List<Map<String, dynamic>> pairedWorkouts = [];
+          for (int i = 0; i < workouts.length; i++) {
+            pairedWorkouts.add({
+              'workout': workouts[i],
+              'docId': workoutDocs[i].id,
+            });
+          }
+          pairedWorkouts.sort(
+            (a, b) => (b['workout'] as Workout).date.compareTo(
+              (a['workout'] as Workout).date,
+            ),
+          );
 
-          // Calcul des statistiques globales
           double totalKm = 0;
           int totalCalories = 0;
           int totalSeconds = 0;
 
-          for (var w in workouts) {
+          for (var item in pairedWorkouts) {
+            final w = item['workout'] as Workout;
             totalKm += w.distanceKm;
             totalCalories += w.calories;
             totalSeconds += w.durationSeconds;
           }
 
-          final totalDurationStr =
-              "${(totalSeconds / 60).floor()}m ${totalSeconds % 60}s";
-
           return Column(
             children: [
-              // 📊 SECTION STATISTIQUES (Dashboard Premium)
+              // 📊 DASHBOARD GLOBAL
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.04),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -107,7 +164,7 @@ class HistoryPage extends StatelessWidget {
                         Colors.orangeAccent,
                       ),
                       _buildStatItem(
-                        totalDurationStr,
+                        _formatTotalDuration(totalSeconds),
                         "Temps total",
                         Icons.timer_rounded,
                         AppTheme.primaryAccent,
@@ -132,82 +189,243 @@ class HistoryPage extends StatelessWidget {
                 ),
               ),
 
-              // 🏃‍♂️ LISTE DES COURSES
+              // 🏃‍♂️ LISTE SMART & INTUITIVE
               Expanded(
                 child: ListView.builder(
-                  itemCount: workouts.length,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: pairedWorkouts.length,
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    bottom: 20,
+                  ),
                   itemBuilder: (context, index) {
-                    final workout = workouts[index];
+                    final item = pairedWorkouts[index];
+                    final workout = item['workout'] as Workout;
+                    final docId = item['docId'] as String;
+
                     final dateFormated = DateFormat(
                       'dd MMMM yyyy à HH:mm',
                       'fr_FR',
                     ).format(workout.date);
-                    final durationStr =
-                        "${(workout.durationSeconds / 60).floor()}:${(workout.durationSeconds % 60).toString().padLeft(2, '0')}";
+                    final bool isGoalAchieved =
+                        (workout.durationSeconds / 60) >=
+                        workout.targetTimeMinutes;
 
-                    return Card(
-                      color: Colors.white.withOpacity(0.03),
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryAccent.withOpacity(0.1),
-                            shape: BoxShape.circle,
+                    return Dismissible(
+                      key: Key(docId),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.only(right: 24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              Colors.redAccent.withValues(alpha: 0.2),
+                              Colors.redAccent.withValues(alpha: 0.8),
+                            ],
+                            stops: const [0.0, 0.6, 1.0],
                           ),
-                          child: const Icon(
-                            Icons.directions_run_rounded,
-                            color: AppTheme.primaryAccent,
-                            size: 28,
-                          ),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        title: Text(
-                          "${workout.distanceKm.toStringAsFixed(2)} km",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              dateFormated,
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        alignment: Alignment.centerRight,
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Text(
-                              durationStr,
-                              style: const TextStyle(
+                              "Supprimer",
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "${workout.calories} kcal",
-                              style: const TextStyle(
-                                color: Colors.orangeAccent,
-                                fontSize: 12,
-                              ),
+                            SizedBox(width: 8),
+                            Icon(
+                              Icons.delete_forever_rounded,
+                              color: Colors.white,
+                              size: 28,
                             ),
                           ],
+                        ),
+                      ),
+                      confirmDismiss: (direction) async {
+                        return await showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: Colors.grey[900],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            title: const Text(
+                              "Supprimer cette course ?",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            content: const Text(
+                              "Cette action effacera définitivement l'activité de ton historique.",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text(
+                                  "Annuler",
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text(
+                                  "Supprimer",
+                                  style: TextStyle(
+                                    color: Colors.redAccent,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      onDismissed: (direction) {
+                        FirebaseFirestore.instance
+                            .collection('workouts')
+                            .doc(docId)
+                            .delete();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Course supprimée")),
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.02),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.04),
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Theme(
+                            data: Theme.of(context).copyWith(
+                              dividerColor: Colors.transparent,
+                              splashColor: AppTheme.primaryAccent.withValues(
+                                alpha: 0.05,
+                              ),
+                              highlightColor: Colors.transparent,
+                            ),
+                            child: ExpansionTile(
+                              iconColor: AppTheme.primaryAccent,
+                              collapsedIconColor: Colors.white60,
+                              leading: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryAccent.withValues(
+                                    alpha: 0.08,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.directions_run_rounded,
+                                  color: AppTheme.primaryAccent,
+                                  size: 26,
+                                ),
+                              ),
+                              title: Text(
+                                "${workout.distanceKm.toStringAsFixed(2)} km",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                dateFormated,
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        _formatSingleDuration(
+                                          workout.durationSeconds,
+                                        ),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        "${workout.calories} kcal",
+                                        style: const TextStyle(
+                                          color: Colors.orangeAccent,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                              ),
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                    horizontal: 8,
+                                  ),
+                                  color: Colors.white.withValues(alpha: 0.015),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _buildExpandedStatDetail(
+                                        icon: Icons.speed_rounded,
+                                        label: "Allure Moy.",
+                                        value: _calculatePace(
+                                          workout.distanceKm,
+                                          workout.durationSeconds,
+                                        ),
+                                        iconColor: AppTheme.secondaryAccent,
+                                      ),
+                                      _buildExpandedStatDetail(
+                                        icon: isGoalAchieved
+                                            ? Icons.check_circle_rounded
+                                            : Icons.flag_outlined,
+                                        label: "Objectif",
+                                        value:
+                                            "${workout.targetTimeMinutes} min",
+                                        iconColor: isGoalAchieved
+                                            ? Colors.greenAccent
+                                            : AppTheme.primaryAccent,
+                                      ),
+                                      _buildExpandedStatDetail(
+                                        icon: Icons.bolt_rounded,
+                                        label: "Intensité",
+                                        value:
+                                            "${(workout.calories / (workout.durationSeconds / 60 == 0 ? 1 : workout.durationSeconds / 60)).toStringAsFixed(1)} c/m",
+                                        iconColor: Colors.orangeAccent,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -229,20 +447,47 @@ class HistoryPage extends StatelessWidget {
   ) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 28),
+        Icon(icon, color: color, size: 26),
         const SizedBox(height: 8),
         Text(
           value,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpandedStatDetail({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color iconColor,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: iconColor, size: 20),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
