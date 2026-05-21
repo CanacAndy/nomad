@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nomad/pages/stats_page.dart';
 import 'package:nomad/theme/app_theme.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
@@ -18,6 +19,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _pages = [
     const HomePage(),
     const HistoryPage(),
+    const StatsPage(),
     const ProfilePage(),
   ];
 
@@ -44,6 +46,10 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.history_rounded),
             label: 'Historique',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart_rounded),
+            label: 'Statistiques',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),

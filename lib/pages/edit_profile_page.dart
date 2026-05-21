@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../theme/app_theme.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -16,12 +20,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _goalController = TextEditingController();
 
   // Variables pour les rouleaux de sélection (Taille & Poids)
-  int _selectedHeight = 170; // Valeur par défaut (en cm)
-  int _selectedWeight = 70; // Valeur par défaut (en kg)
+  int _selectedHeight = 170;
+  int _selectedWeight = 70;
 
   bool _isInitLoading = true;
   bool _isSaving = false;
   String? _uid;
+
+  // 📸 Variables pour la photo de profil en Base64
+  String? _base64Image;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -46,11 +54,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
           _emailController.text = data['email'] ?? '';
           _goalController.text = (data['weeklyGoal'] ?? '20').toString();
 
-          // Récupération sécurisée de la taille et du poids depuis Firestore
-          if (data['height'] != null)
+          // Récupération de la chaîne Base64 si elle existe
+          _base64Image = data['photoBase64'];
+
+          if (data['height'] != null) {
             _selectedHeight = (data['height'] as num).toInt();
-          if (data['weight'] != null)
+          }
+          if (data['weight'] != null) {
             _selectedWeight = (data['weight'] as num).toInt();
+          }
         }
       }
     } catch (e) {
@@ -59,6 +71,39 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (mounted) {
         setState(() => _isInitLoading = false);
       }
+    }
+  }
+
+  // 📷 Fonction pour sélectionner, compresser fortement et convertir la photo
+  Future<void> _pickAndProcessImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 40, // Première réduction de qualité à la source
+      );
+
+      if (pickedFile == null) return;
+
+      // Lecture de l'image en octets
+      final Uint8List imageBytes = await pickedFile.readAsBytes();
+
+      // Compression agressive pour respecter la limite d'un document Firestore (1 Mo)
+      final List<int>
+      compressedBytes = await FlutterImageCompress.compressWithList(
+        imageBytes,
+        minHeight:
+            200, // Largeur/hauteur suffisantes pour un petit avatar circulaire
+        minWidth: 200,
+        quality: 50, // Compression de qualité
+      );
+
+      // Encodage final en chaîne de caractères Base64
+      setState(() {
+        _base64Image = base64Encode(compressedBytes);
+      });
+    } catch (e) {
+      print("❌ Erreur sélection photo : $e");
+      _showSnackBar("Impossible de charger la photo", isError: true);
     }
   }
 
@@ -77,13 +122,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     try {
       if (_uid != null) {
+        // Enregistrement global incluant la chaîne Base64
         await FirebaseFirestore.instance.collection('users').doc(_uid).update({
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
           'weeklyGoal': int.tryParse(_goalController.text.trim()) ?? 20,
-          'height':
-              _selectedHeight, // Sauvegarde de la taille choisie au rouleau
-          'weight': _selectedWeight, // Sauvegarde du poids choisi au rouleau
+          'height': _selectedHeight,
+          'weight': _selectedWeight,
+          'photoBase64': _base64Image, // Sauvegarde locale de la chaîne Base64
         });
 
         _showSnackBar("Profil mis à jour avec succès !");
@@ -110,7 +156,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  // Fonction pour afficher le rouleau de sélection (BottomSheet fluide)
   void _showScrollPicker({
     required String title,
     required int minValue,
@@ -170,18 +215,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Barre de sélection centrale en arrière-plan
                         Container(
                           height: 45,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.05),
+                            color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppTheme.primaryAccent.withOpacity(0.3),
+                              color: AppTheme.primaryAccent.withValues(
+                                alpha: 0.3,
+                              ),
                             ),
                           ),
                         ),
-                        // Rouleau de défilement (Scroll Wheel natif de Flutter)
                         ListWheelScrollView.useDelegate(
                           itemExtent: 40,
                           perspective: 0.005,
@@ -230,6 +275,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
+  // Helper pour décoder et afficher l'image Base64 proprement
+  ImageProvider _getAvatarImage() {
+    if (_base64Image != null && _base64Image!.isNotEmpty) {
+      try {
+        return MemoryImage(base64Decode(_base64Image!));
+      } catch (e) {
+        print("Erreur décodage Base64: $e");
+      }
+    }
+    // Fallback par défaut si aucune image n'est présente
+    return const NetworkImage('https://i.pravatar.cc/150?img=11');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -254,41 +312,44 @@ class _EditProfilePageState extends State<EditProfilePage> {
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 children: [
-                  // Photo de profil
+                  // Photo de profil cliquable
                   Center(
-                    child: Stack(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: AppTheme.primaryAccent,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const CircleAvatar(
-                            radius: 60,
-                            backgroundImage: NetworkImage(
-                              'https://i.pravatar.cc/150?img=11',
-                            ),
-                            backgroundColor: AppTheme.cardColor,
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
+                    child: GestureDetector(
+                      onTap:
+                          _pickAndProcessImage, // Lance la galerie au clic sur l'avatar
+                      child: Stack(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
                             decoration: const BoxDecoration(
-                              color: AppTheme.secondaryAccent,
+                              color: AppTheme.primaryAccent,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
-                              Icons.camera_alt_rounded,
-                              color: Colors.black,
-                              size: 20,
+                            child: CircleAvatar(
+                              radius: 60,
+                              backgroundImage:
+                                  _getAvatarImage(), // Affiche dynamiquement le Base64 ou le fallback
+                              backgroundColor: AppTheme.cardColor,
                             ),
                           ),
-                        ),
-                      ],
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: AppTheme.secondaryAccent,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt_rounded,
+                                color: Colors.black,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -314,10 +375,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 📊 SECTION DES ROULEAUX (Taille & Poids)
+                  // SECTION DES ROULEAUX (Taille & Poids)
                   Row(
                     children: [
-                      // Rouleau Taille
                       Expanded(
                         child: GestureDetector(
                           onTap: () => _showScrollPicker(
@@ -337,7 +397,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      // Rouleau Poids
                       Expanded(
                         child: GestureDetector(
                           onTap: () => _showScrollPicker(
@@ -424,7 +483,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  // Petit widget personnalisé pour afficher le bouton d'ouverture des rouleaux Taille/Poids
   Widget _buildPickerDisplay(String label, String value, IconData icon) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

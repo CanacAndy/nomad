@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -19,7 +20,6 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final User? user = FirebaseAuth.instance.currentUser;
 
-  // Variables pour les statistiques globales calculées en temps réel
   int _totalWorkouts = 0;
   double _totalDistance = 0.0;
   StreamSubscription<QuerySnapshot>? _statsSubscription;
@@ -30,7 +30,6 @@ class _ProfilePageState extends State<ProfilePage> {
     _listenToGlobalStats();
   }
 
-  // Écoute TOUTES les courses de l'utilisateur pour sommer les statistiques globales
   void _listenToGlobalStats() {
     if (user == null) return;
 
@@ -65,57 +64,212 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
+  ImageProvider _getAvatarImage(String? base64String) {
+    if (base64String != null && base64String.isNotEmpty) {
+      try {
+        return MemoryImage(base64Decode(base64String));
+      } catch (e) {
+        debugPrint("❌ Erreur décodage Base64 : $e");
+      }
+    }
+    return NetworkImage('https://i.pravatar.cc/150?u=${user?.uid}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
 
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Custom Header (Gradient + Avatar)
-            Stack(
-              clipBehavior: Clip.none,
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user?.uid)
+            .snapshots(),
+        builder: (context, userSnapshot) {
+          String? photoBase64;
+          Map<String, dynamic>? userData;
+
+          if (userSnapshot.hasData && userSnapshot.data!.exists) {
+            userData = userSnapshot.data!.data() as Map<String, dynamic>?;
+            if (userData != null) {
+              photoBase64 = userData['photoBase64'];
+            }
+          }
+
+          return SingleChildScrollView(
+            child: Column(
               children: [
-                Container(
-                  height: 220,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.primaryAccent.withValues(alpha: 0.9),
-                        AppTheme.secondaryAccent.withValues(alpha: 0.6),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(40),
-                      bottomRight: Radius.circular(40),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 60,
-                  left: 20,
-                  right: 20,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Mon Profil',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      height: 220,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primaryAccent.withValues(alpha: 0.9),
+                            AppTheme.secondaryAccent.withValues(alpha: 0.6),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(40),
+                          bottomRight: Radius.circular(40),
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.edit_rounded,
-                          color: Colors.black87,
+                    ),
+                    Positioned(
+                      top: 60,
+                      left: 20,
+                      right: 20,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Mon Profil',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.edit_rounded,
+                              color: Colors.black87,
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const EditProfilePage(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      top: 150,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: CircleAvatar(
+                          radius: 52,
+                          backgroundColor: AppTheme.darkBackground,
+                          child: CircleAvatar(
+                            radius: 50,
+                            backgroundImage: _getAvatarImage(photoBase64),
+                            backgroundColor: AppTheme.cardColor,
+                          ),
                         ),
-                        onPressed: () {
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 60),
+
+                Text(
+                  userProvider.name,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.displayLarge?.copyWith(fontSize: 24),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  userProvider.email.isNotEmpty
+                      ? userProvider.email
+                      : (user?.email ?? 'Email non disponible'),
+                  style: const TextStyle(color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: 32),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Statistiques Globales',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              Icons.directions_run_rounded,
+                              'Courses',
+                              '$_totalWorkouts',
+                              Colors.blueAccent,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildStatCard(
+                              Icons.speed_rounded,
+                              'Distance totale',
+                              '${_totalDistance.toStringAsFixed(1)} km',
+                              AppTheme.primaryAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // --- SECTION IMC ALIMENTÉE DEPUIS FIRESTORE DIRECT ---
+                      if (userData != null) ...[
+                        () {
+                          final rawWeight =
+                              userData?['weight'] ?? userData?['poids'] ?? 0.0;
+                          final rawHeight =
+                              userData?['height'] ?? userData?['taille'] ?? 0.0;
+
+                          final double weight = (rawWeight as num).toDouble();
+                          final double height = (rawHeight as num).toDouble();
+
+                          if (weight > 0 && height > 0) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 32),
+                                const Text(
+                                  'Analyse de Santé',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                BmiCard(weightKg: weight, heightCm: height),
+                              ],
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }(),
+                      ],
+
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Paramètres',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildMenuOption(
+                        Icons.person_outline_rounded,
+                        'Modifier le profil',
+                        onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -124,203 +278,59 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
                         },
                       ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  top: 150,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: CircleAvatar(
-                      radius: 52,
-                      backgroundColor: AppTheme.darkBackground,
-                      child: CircleAvatar(
-                        radius: 50,
-                        backgroundImage: NetworkImage(
-                          user?.photoURL ??
-                              'https://i.pravatar.cc/150?u=${user?.uid}',
+
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: () async {
+                          await FirebaseAuth.instance.signOut();
+                          if (context.mounted) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const LoginPage(),
+                              ),
+                              (route) => false,
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 20,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(
+                              alpha: 0.1,
+                            ), // Corrigé
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.logout_rounded,
+                                color: Colors.redAccent,
+                              ),
+                              SizedBox(width: 16),
+                              Text(
+                                'Se déconnecter',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        backgroundColor: AppTheme.cardColor,
                       ),
-                    ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 60),
-
-            // --- INFOS UTILISATEUR VIA PROVIDER ---
-            Text(
-              userProvider.name,
-              style: Theme.of(
-                context,
-              ).textTheme.displayLarge?.copyWith(fontSize: 24),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              userProvider.email.isNotEmpty
-                  ? userProvider.email
-                  : (user?.email ?? 'Email non disponible'),
-              style: const TextStyle(color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 32),
-
-            // Contenu du profil
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // --- SECTION 1 : STATISTIQUES GLOBALES ---
-                  const Text(
-                    'Statistiques Globales',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.directions_run_rounded,
-                          'Courses',
-                          '$_totalWorkouts',
-                          Colors.blueAccent,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildStatCard(
-                          Icons.speed_rounded,
-                          'Distance totale',
-                          '${_totalDistance.toStringAsFixed(1)} km',
-                          AppTheme.primaryAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // --- 🎯 REQUÊTE DIRECTE FIRESTORE POUR L'IMC ---
-                  StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(user?.uid)
-                        .snapshots(),
-                    builder: (context, userSnapshot) {
-                      if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final userData =
-                          userSnapshot.data!.data() as Map<String, dynamic>?;
-                      if (userData == null) return const SizedBox.shrink();
-
-                      // On essaie de récupérer le poids et la taille (on check les versions française et anglaise pour être sûr)
-                      final rawWeight =
-                          userData['weight'] ?? userData['poids'] ?? 0.0;
-                      final rawHeight =
-                          userData['height'] ?? userData['taille'] ?? 0.0;
-
-                      final double weight = (rawWeight as num).toDouble();
-                      final double height = (rawHeight as num).toDouble();
-
-                      if (weight > 0 && height > 0) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 32),
-                            const Text(
-                              'Analyse de Santé',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            BmiCard(weightKg: weight, heightCm: height),
-                          ],
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-
-                  // --- SECTION 3 : PARAMÈTRES ---
-                  const SizedBox(height: 32),
-                  const Text(
-                    'Paramètres',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMenuOption(
-                    Icons.person_outline_rounded,
-                    'Modifier le profil',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const EditProfilePage(),
-                        ),
-                      );
-                    },
-                  ),
-
-                  // --- BOUTON DÉCONNEXION ---
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    onTap: () async {
-                      await FirebaseAuth.instance.signOut();
-
-                      if (context.mounted) {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const LoginPage(),
-                          ),
-                          (route) => false,
-                        );
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 20,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.logout_rounded, color: Colors.redAccent),
-                          SizedBox(width: 16),
-                          Text(
-                            'Se déconnecter',
-                            style: TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
