@@ -9,6 +9,7 @@ import '../providers/user_provider.dart';
 import '../widgets/bmi_card.dart';
 import 'login_page.dart';
 import 'edit_profile_page.dart';
+import 'badges_page.dart'; // 👈 Importation de la page des trophées
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -223,7 +224,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         ],
                       ),
 
-                      // --- SECTION IMC ALIMENTÉE DEPUIS FIRESTORE DIRECT ---
                       if (userData != null) ...[
                         () {
                           final rawWeight =
@@ -266,6 +266,22 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // 🏆 AJOUT : Option de menu pour accéder aux Badges
+                      _buildMenuOption(
+                        Icons.emoji_events_rounded,
+                        'Mes Trophées & Badges',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const BadgesPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
                       _buildMenuOption(
                         Icons.person_outline_rounded,
                         'Modifier le profil',
@@ -279,7 +295,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         },
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 24),
                       GestureDetector(
                         onTap: () async {
                           await FirebaseAuth.instance.signOut();
@@ -299,9 +315,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             horizontal: 20,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.redAccent.withValues(
-                              alpha: 0.1,
-                            ), // Corrigé
+                            color: Colors.redAccent.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Row(
@@ -370,12 +384,32 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // 🛠️ Stylisation uniforme des options cliquables sous forme de tuiles sombres
   Widget _buildMenuOption(IconData icon, String title, {VoidCallback? onTap}) {
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: Colors.white),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      trailing: const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        dense: true,
+        leading: Icon(icon, color: AppTheme.primaryAccent, size: 22),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: AppTheme.textSecondary,
+          size: 20,
+        ),
+      ),
     );
   }
 }

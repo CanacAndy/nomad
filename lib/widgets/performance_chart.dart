@@ -27,22 +27,23 @@ class PerformanceChart extends StatelessWidget {
           gridData: const FlGridData(show: false),
           titlesData: FlTitlesData(
             show: true,
+            // CORRECTION : Utilisation de AxisTitles pour les axes à masquer
             rightTitles: const AxisTitles(
               sideTitles: SideTitles(showTitles: false),
-            ), // Corrigé
+            ),
             topTitles: const AxisTitles(
               sideTitles: SideTitles(showTitles: false),
-            ), // Corrigé
+            ),
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 35,
+                reservedSize: 40,
                 getTitlesWidget: (value, meta) {
                   return Text(
-                    '${value.toInt()}k',
+                    '${value.toInt()} km',
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
-                      fontSize: 12,
+                      fontSize: 11,
                     ),
                   );
                 },
@@ -68,7 +69,7 @@ class PerformanceChart extends StatelessWidget {
                         days[value.toInt()],
                         style: const TextStyle(
                           color: AppTheme.textSecondary,
-                          fontSize: 12,
+                          fontSize: 11,
                         ),
                       ),
                     );
@@ -88,7 +89,8 @@ class PerformanceChart extends StatelessWidget {
               spots: List.generate(weeklyDistances.length, (index) {
                 return FlSpot(index.toDouble(), weeklyDistances[index]);
               }),
-              isCurved: true, // Lissage activé nativement
+              isCurved:
+                  true, // CORRECTION : Plus besoin de curveMode, isCurved gère tout
               color: AppTheme.primaryAccent,
               barWidth: 4,
               isStrokeCapRound: true,
