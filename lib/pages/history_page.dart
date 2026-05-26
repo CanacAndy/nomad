@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../theme/app_theme.dart';
 import '../models/workout.dart';
 
@@ -40,6 +42,58 @@ class HistoryPage extends StatelessWidget {
       return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // 🗺️ Fonction qui ouvre la carte en plein écran
+  void _openFullScreenMap(
+    BuildContext context,
+    List<LatLng> points,
+    String title,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          title: Text(
+            title,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: FlutterMap(
+          options: MapOptions(
+            initialCenter: points.isNotEmpty
+                ? points.first
+                : const LatLng(48.8566, 2.3522),
+            initialZoom: 15.0,
+            // Ici l'utilisateur peut zoomer et déplacer la carte librement !
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all,
+            ),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate:
+                  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+            ),
+            PolylineLayer(
+              polylines: [
+                Polyline(
+                  points: points,
+                  strokeWidth: 5.0,
+                  color: AppTheme.primaryAccent,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -383,6 +437,71 @@ class HistoryPage extends StatelessWidget {
                                 ],
                               ),
                               children: [
+                                // 🗺️ MINI-CARTE GPS RENDUE CLIQUABLE (Modifiée ici)
+                                if (workout.routePoints.isNotEmpty)
+                                  GestureDetector(
+                                    onTap: () => _openFullScreenMap(
+                                      context,
+                                      workout.routePoints,
+                                      "Course du $dateFormated",
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        SizedBox(
+                                          height: 140,
+                                          width: double.infinity,
+                                          child: FlutterMap(
+                                            options: MapOptions(
+                                              initialCenter:
+                                                  workout.routePoints.first,
+                                              initialZoom: 14.5,
+                                              interactionOptions:
+                                                  const InteractionOptions(
+                                                    flags: InteractiveFlag
+                                                        .none, // Bloquée pour le défilement de la liste
+                                                  ),
+                                            ),
+                                            children: [
+                                              TileLayer(
+                                                urlTemplate:
+                                                    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                                              ),
+                                              PolylineLayer(
+                                                polylines: [
+                                                  Polyline(
+                                                    points: workout.routePoints,
+                                                    strokeWidth: 4.0,
+                                                    color:
+                                                        AppTheme.primaryAccent,
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        // Petit indicateur visuel en haut à droite pour dire qu'on peut agrandir
+                                        Positioned(
+                                          top: 8,
+                                          right: 8,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withOpacity(
+                                                0.6,
+                                              ),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.fullscreen_rounded,
+                                              color: Colors.white,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 16,
